@@ -17,14 +17,16 @@ module Berylx
     module_function
 
     # ----------------------------------------------------------------
-    # Parallel — Parallel#call と同一セマンティクス。各 branch を副木として
-    # 実行し、失敗があれば on_err (payload のタグ) に従って合成、無ければ
-    # reducer で focus を merge する。short_circuit / accumulate は handler の
-    # 分岐ではなく payload の node.on_err (タグ) で運ぶ (result.parallel_tag_controlled)。
+    # Parallel — 各 branch を副木として実行し、失敗があれば on_err (payload の
+    # タグ) に従って合成、無ければ reducer で focus を merge する。
+    # short_circuit / accumulate / workers は handler の分岐ではなく payload の
+    # node (検査可能データ) で運ぶ (result.parallel_tag_controlled /
+    # substrate.parallel.mapped)。
     # ----------------------------------------------------------------
     def run_parallel(node, focus, handlers)
-      threads = node.branches.map { |branch| Thread.new { run_subtree(branch, focus, handlers) } }
-      branch_results = join_all(threads)
+      branch_results = ParallelExecutor.new(node.branches, node.workers) do |branch|
+        run_subtree(branch, focus, handlers)
+      end.run
       failures = branch_results.grep(Err)
 
       return parallel_handle_failures(node, focus, failures) unless failures.empty?
@@ -33,21 +35,6 @@ module Berylx
       return merged if merged.is_a?(Err)
 
       Result.ok(merged)
-    end
-
-    # 枝を必ず全部 join する。一つが StandardError でない例外 (呼び出し側の中断合図など)
-    # で抜けたときに map(&:value) で即座に離脱すると、残りの枝が走り続け、走行が終わった
-    # 後で副作用が起きる。全部待ってから最初の例外を上げ直す。
-    def join_all(threads)
-      results = threads.map do |thread|
-        thread.value
-      rescue Exception => e # rubocop:disable Lint/RescueException
-        e
-      end
-      raised = results.find { |r| r.is_a?(Exception) }
-      raise raised if raised
-
-      results
     end
 
     # short_circuit なら最初の Err、accumulate なら全失敗を parallel_errors に集約。

@@ -170,6 +170,34 @@ Berylx::Root[id: 7].call(workflow, handlers: fixed) # no database, no mocks, det
 An unhandled tag raises `KeyError` rather than returning `nil`. Effects performed from task bodies
 and from recovery bodies pass through `around`, so an audit or timing aspect observes them.
 
+## Parallel workers
+
+By default, `&` starts one `Thread` per branch without waiting for other branches to complete. Call
+`.workers(n)` on a parallel node (or pass `workers: n` to `Berylx::Parallel.new`) to cap how many
+branches of that node run simultaneously:
+
+```ruby
+fetch_all = (fetch_a & fetch_b & fetch_c & fetch_d).workers(2)
+result = fetch_all.call(Berylx::Lay[ids: [1, 2, 3, 4]])
+```
+
+- **Optional positive integer**: `workers` is optional. When provided, it must be an `Integer` of at
+  least `1`; invalid values raise `ArgumentError` when the node is created.
+- **Same semantics, bounded starts**: every branch still starts from the same input lay and runs to
+  completion in both `short_circuit` and `accumulate` modes. Results fold in branch definition
+  order, `short_circuit` returns the first `Err` in definition order, and `accumulate` collects all
+  branch errors in definition order.
+- **Non-`StandardError` exceptions**: if a branch raises an exception that is not a `StandardError`,
+  unstarted branches are not started, already-started branches are joined in definition order, and
+  the exception from the first raising branch in definition order is re-raised.
+- **Per-node scope and nesting**: there is no shared global worker pool. A limited parallel node is
+  retained as a single branch when composed into an outer parallel node (unlimited parallel nodes
+  still flatten), so nested limits multiply per level (for example, outer `workers(2)` over inner
+  `workers(3)` allows up to 6 inner branches concurrently).
+- **Ruby GVL**: under Ruby's GVL, `workers` runs branches on Ruby `Thread`s, so it primarily
+  benefits wait-heavy work such as external commands and network I/O rather than CPU-bound Ruby
+  code.
+
 ## Documentation
 
 | Guide                                         | What it covers                                                                             |
