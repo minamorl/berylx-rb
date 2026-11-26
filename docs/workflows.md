@@ -180,6 +180,28 @@ result.code
 Parallel failure information is available through `result.parallel_errors`. See
 [Errors and recovery](error-handling.md).
 
+### Limiting concurrent branches with `workers`
+
+By default, a parallel group starts one `Thread` per branch without waiting for other branches to
+finish. Call `.workers(n)` (or `Berylx::Parallel.new(branches, workers: n)`) to cap how many
+branches of that node run at the same time:
+
+```ruby
+workflow = (fetch_a & fetch_b & fetch_c & fetch_d).workers(2)
+```
+
+`n` must be an `Integer` >= 1 (validated at node creation with `ArgumentError`). `workers` only
+limits when branches start — every branch still sees the same input lay and runs to completion in
+both `short_circuit` and `accumulate` modes, and results or errors still fold in definition order.
+If a branch raises a non-`StandardError` exception, unstarted branches do not start, started
+branches are joined in definition order, and the exception from the first raising branch in
+definition order is re-raised.
+
+Limited parallel nodes are not flattened into an outer parallel node; each level keeps its own limit
+without a shared global pool, so nested limits multiply (`outer * inner`). Unlimited parallel nodes
+continue to flatten as before. Under Ruby's GVL, limiting parallel `Thread` concurrency primarily
+helps wait-heavy work such as external commands and network I/O.
+
 ## Named workflows and graphs
 
 Wrap a composition in `Workflow` when the whole procedure deserves a name:

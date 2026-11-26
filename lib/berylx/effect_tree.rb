@@ -211,6 +211,7 @@ end
 # 合成子 (parallel / branch / rescue) の real interpreter は別ファイルで
 # EffectTree を再オープンして足す。core (compile / build / run / handler マップ)
 # と、各合成子の berylx 圏 algebra (短絡・merge・回復) を語りの上でも分離する。
+require_relative 'effect_tree/parallel_executor'
 require_relative 'effect_tree/combinators'
 
 # dry-run interpreter (aspect) も別ファイルで EffectTree を再オープンして足す。
